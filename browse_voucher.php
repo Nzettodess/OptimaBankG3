@@ -11,7 +11,7 @@ $userId = $_SESSION['user_id'];
 $username = $_SESSION['username'];
 
 // Get profile image if exists
-$profileImg = "IMG/blank_profile.png";
+$profileImg = "blank_profile.png";
 $stmt = $conn->prepare("SELECT ProfileImage FROM USERS WHERE UserID = ?");
 $stmt->bind_param("i", $userId);
 $stmt->execute();
@@ -37,7 +37,7 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
         // If category name matches, show all its vouchers
         if (stripos($categoryName, $search) !== false) {
             $stmt = $conn->prepare(
-                "SELECT VoucherID, Title, VoucherPoints, Image, Description, IsLatest 
+                "SELECT VoucherID, Title, VoucherPoints, Image, Description, TaC, IsLatest 
                  FROM VOUCHER 
                  WHERE CategoryID = ? 
                  ORDER BY CreatedAt DESC"
@@ -45,21 +45,22 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
             $stmt->bind_param("i", $categoryId);
         } else {
             $stmt = $conn->prepare(
-                "SELECT VoucherID, Title, VoucherPoints, Image, Description, IsLatest 
+                "SELECT VoucherID, Title, VoucherPoints, Image, Description, TaC, IsLatest 
                  FROM VOUCHER 
                  WHERE CategoryID = ? AND (
                     Title LIKE ? OR
                     CAST(VoucherPoints AS CHAR) LIKE ? OR
-                    Description LIKE ?
+                    Description LIKE ? OR
+                    TaC LIKE ?
                  )
                  ORDER BY CreatedAt DESC"
             );
             $like = "%" . $search . "%";
-            $stmt->bind_param("isss", $categoryId, $like, $like, $like);
+            $stmt->bind_param("issss", $categoryId, $like, $like, $like, $like);
         }
     } else {
         $stmt = $conn->prepare(
-            "SELECT VoucherID, Title, VoucherPoints, Image, Description, IsLatest 
+            "SELECT VoucherID, Title, VoucherPoints, Image, Description, TaC, IsLatest 
              FROM VOUCHER 
              WHERE CategoryID = ? 
              ORDER BY CreatedAt DESC"
@@ -163,6 +164,55 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
                 justify-content: center;
             }
         }
+        .modal-voucher-img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: .5rem;
+            margin-bottom: 15px;
+        }
+        .terms-section {
+            background-color: #f8f9fa;
+            border-radius: 0.5rem;
+            padding: 15px;
+            margin-top: 15px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .terms-section h6 {
+            font-size: 0.9rem;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #495057;
+        }
+        .terms-content {
+            font-size: 0.85rem;
+            color: #6c757d;
+            white-space: pre-line;
+        }
+        .terms-modal-section {
+            background-color: #f8f9fa;
+            border-radius: 0.5rem;
+            padding: 15px;
+            margin-top: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .terms-modal-section h6 {
+            font-size: 0.95rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #495057;
+        }
+        .terms-modal-content {
+            font-size: 0.9rem;
+            color: #6c757d;
+            white-space: pre-line;
+        }
+        .btn-view-terms {
+            font-size: 0.85rem;
+            padding: 0.25rem 0.5rem;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -173,7 +223,7 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
         <a class="navbar-brand fw-bold" href="home.php">OptimaBank</a>
         <div class="d-flex align-items-center gap-3">
             <a href="cart.php">
-                <img src="IMG/trolley.png" alt="Cart" class="trolley-icon">
+                <img src="trolley.png" alt="Cart" class="trolley-icon">
             </a>
             <a href="edit_profile.php">
                 <img src="<?= htmlspecialchars($profileImg) ?>" alt="Profile" class="profile-img">
@@ -185,7 +235,7 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
 <div class="container py-4">
     <div class="search-bar-wrapper">
         <form class="d-flex" method="get" action="">
-            <input class="form-control me-2" type="search" name="search" placeholder="Search category, title, points, desc..." value="<?= htmlspecialchars($search) ?>" aria-label="Search">
+            <input class="form-control me-2" type="search" name="search" placeholder="Search category, title, points, desc, terms..." value="<?= htmlspecialchars($search) ?>" aria-label="Search">
             <?php if ($search !== ""): ?>
                 <a href="browse_voucher.php" class="btn btn-outline-secondary me-2">Clear</a>
             <?php endif; ?>
@@ -221,14 +271,33 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
                             </h6>
                             <div class="mb-2 text-success fw-semibold">Points: <?= htmlspecialchars($v['VoucherPoints']) ?></div>
                             <div class="mb-2 text-muted" style="font-size:0.97em;">
-                                <?= nl2br(htmlspecialchars($v['Description'])) ?>
+                                <?= nl2br(htmlspecialchars(mb_strimwidth($v['Description'], 0, 100, '...'))) ?>
                             </div>
-                            <form action="redeem_voucher.php" method="post">
-                                <input type="hidden" name="voucher_id" value="<?= $v['VoucherID'] ?>">
-                                <button type="submit" class="btn btn-outline-success w-100">
-                                    Add to Redeem
+                            
+                            <!-- Terms & Conditions Preview -->
+                            <div class="terms-section">
+                                <h6>Terms & Conditions</h6>
+                                <div class="terms-content">
+                                    <?= nl2br(htmlspecialchars(mb_strimwidth($v['TaC'], 0, 120, '...'))) ?>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-info mt-2 btn-view-terms" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#termsModal"
+                                        data-terms-title="<?= htmlspecialchars($v['Title']) ?>"
+                                        data-terms-content="<?= htmlspecialchars($v['TaC']) ?>">
+                                    View Full Terms
                                 </button>
-                            </form>
+                            </div>
+                            
+                            <button type="button" class="btn btn-outline-success w-100 mt-3 view-voucher-btn" 
+                                    data-voucher-id="<?= $v['VoucherID'] ?>"
+                                    data-voucher-title="<?= htmlspecialchars($v['Title']) ?>"
+                                    data-voucher-points="<?= htmlspecialchars($v['VoucherPoints']) ?>"
+                                    data-voucher-description="<?= htmlspecialchars($v['Description']) ?>"
+                                    data-voucher-terms="<?= htmlspecialchars($v['TaC']) ?>"
+                                    data-voucher-image="<?= !empty($v['Image']) ? 'data:image/jpeg;base64,' . base64_encode($v['Image']) : '' ?>">
+                                Add to Redeem
+                            </button>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -245,8 +314,65 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
     <?php endif; ?>
 </div>
 
+<!-- Terms & Conditions Modal -->
+<div class="modal fade" id="termsModal" tabindex="-1" aria-labelledby="termsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="termsModalLabel">Terms & Conditions</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <h4 id="termsModalVoucherTitle" class="mb-3"></h4>
+                <div class="terms-modal-section">
+                    <h6>Terms & Conditions</h6>
+                    <div id="termsModalContent" class="terms-modal-content"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Voucher Detail Modal -->
+<div class="modal fade" id="voucherModal" tabindex="-1" aria-labelledby="voucherModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="voucherModalLabel">Voucher Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="modalVoucherImage">
+                    <!-- Image will be inserted by JavaScript -->
+                </div>
+                <h4 id="modalVoucherTitle" class="mb-2"></h4>
+                <div class="text-success fw-semibold mb-3">Points: <span id="modalVoucherPoints"></span></div>
+                <p id="modalVoucherDescription" class="mb-4"></p>
+                
+                <!-- Terms & Conditions Section in Voucher Modal -->
+                <div class="terms-modal-section">
+                    <h6>Terms & Conditions</h6>
+                    <div id="modalVoucherTerms" class="terms-modal-content"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form id="redeemForm" action="redeem_voucher.php" method="post">
+                    <input type="hidden" name="voucher_id" id="modalVoucherId">
+                    <button type="submit" class="btn btn-success">Confirm Redeem</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function() {
+    // Scroll functionality
     document.querySelectorAll('.voucher-scroll-row').forEach(function(row, idx) {
         var fade = document.getElementById('voucher-row-fade-' + idx);
         function updateFade() {
@@ -260,6 +386,54 @@ document.addEventListener("DOMContentLoaded", function() {
         updateFade();
         row.addEventListener('scroll', updateFade);
         window.addEventListener('resize', updateFade);
+    });
+    
+    // Terms Modal functionality
+    const termsModal = new bootstrap.Modal(document.getElementById('termsModal'));
+    const viewTermsButtons = document.querySelectorAll('.btn-view-terms');
+    
+    viewTermsButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const termsTitle = this.getAttribute('data-terms-title');
+            const termsContent = this.getAttribute('data-terms-content');
+            
+            document.getElementById('termsModalLabel').textContent = 'Terms & Conditions - ' + termsTitle;
+            document.getElementById('termsModalVoucherTitle').textContent = termsTitle;
+            document.getElementById('termsModalContent').textContent = termsContent;
+        });
+    });
+    
+    // Voucher modal functionality
+    const voucherModal = new bootstrap.Modal(document.getElementById('voucherModal'));
+    const viewVoucherButtons = document.querySelectorAll('.view-voucher-btn');
+    
+    viewVoucherButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const voucherId = this.getAttribute('data-voucher-id');
+            const voucherTitle = this.getAttribute('data-voucher-title');
+            const voucherPoints = this.getAttribute('data-voucher-points');
+            const voucherDescription = this.getAttribute('data-voucher-description');
+            const voucherTerms = this.getAttribute('data-voucher-terms');
+            const voucherImage = this.getAttribute('data-voucher-image');
+            
+            // Set modal content
+            document.getElementById('modalVoucherId').value = voucherId;
+            document.getElementById('modalVoucherTitle').textContent = voucherTitle;
+            document.getElementById('modalVoucherPoints').textContent = voucherPoints;
+            document.getElementById('modalVoucherDescription').textContent = voucherDescription;
+            document.getElementById('modalVoucherTerms').textContent = voucherTerms;
+            
+            // Set image or placeholder
+            const imageContainer = document.getElementById('modalVoucherImage');
+            if (voucherImage) {
+                imageContainer.innerHTML = `<img src="${voucherImage}" class="modal-voucher-img" alt="${voucherTitle}">`;
+            } else {
+                imageContainer.innerHTML = '<div class="modal-voucher-img d-flex align-items-center justify-content-center bg-light text-muted">No Image Available</div>';
+            }
+            
+            // Show modal
+            voucherModal.show();
+        });
     });
 });
 </script>
