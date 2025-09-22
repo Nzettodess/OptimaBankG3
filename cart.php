@@ -25,9 +25,9 @@ $errors = [];
 $success = "";
 
 // Handle update quantity
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_qty') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $_POST['action'] === 'update_qty') {
     $cartId = (int) $_POST['cart_id'];
-    $newQty = max(1, (int) $_POST['quantity']); // minimum 1
+    $newQty = max(1, (int) $_POST['quantity']);
     $upd = $conn->prepare("UPDATE CART_ITEMS SET Quantity = ? WHERE CartID = ? AND UserID = ?");
     $upd->bind_param("iii", $newQty, $cartId, $userId);
     $upd->execute();
@@ -37,8 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // Handle Redeem Now
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'redeem') {
-    $sql = "SELECT ci.CartID, ci.VoucherID, ci.Quantity, v.VoucherPoints
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $_POST['action'] === 'redeem') {
+    $sql = "SELECT ci.VoucherID, ci.Quantity, v.VoucherPoints
             FROM CART_ITEMS ci
             JOIN VOUCHER v ON ci.VoucherID = v.VoucherID
             WHERE ci.UserID = ?";
@@ -63,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
         $conn->begin_transaction();
         try {
-            // Lock and fetch user points
+            // Fetch user points (lock row)
             $stmt = $conn->prepare("SELECT UserPoints FROM USERS WHERE UserID = ? FOR UPDATE");
             $stmt->bind_param("i", $userId);
             $stmt->execute();
@@ -71,11 +71,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $stmt->fetch();
             $stmt->close();
 
-            if ($currentPoints < $netDeduction) {
-                throw new Exception("Insufficient points. You need $netDeduction points but only have $currentPoints.");
+            // Ensure new users start at 50k if no points set yet
+            if ($currentPoints === null) {
+                $currentPoints = 50000;
+                $setInit = $conn->prepare("UPDATE USERS SET UserPoints = ? WHERE UserID = ?");
+                $setInit->bind_param("ii", $currentPoints, $userId);
+                $setInit->execute();
+                $setInit->close();
             }
 
-            // Insert into history
+            if ($currentPoints < $netDeduction) {
+                throw new Exception("Insufficient points. You need $netDeduction pts but only have $currentPoints pts.");
+            }
+
+            // Insert redemption history
             $ins = $conn->prepare("INSERT INTO CART_ITEMS_HISTORY (VoucherID, UserID, Quantity, CompletedDate) VALUES (?, ?, ?, NOW())");
             foreach ($cartItems as $item) {
                 $ins->bind_param("iii", $item['VoucherID'], $userId, $item['Quantity']);
@@ -89,15 +98,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $del->execute();
             $del->close();
 
-            // Update user points
-            $newBalance = $currentPoints - $netDeduction;
+            // Update user points (deduct cost, then add rebate)
+            $newBalance = $currentPoints - $totalPoints + $rebate;
             $upd = $conn->prepare("UPDATE USERS SET UserPoints = ? WHERE UserID = ?");
             $upd->bind_param("ii", $newBalance, $userId);
             $upd->execute();
             $upd->close();
 
             $conn->commit();
-            $success = "Redemption successful! You spent $totalPoints pts, rebate $rebate pts, net deduction $netDeduction pts. New balance: $newBalance pts.";
+            $success = "Redemption successful! You spent $totalPoints pts, received rebate $rebate pts, new balance: $newBalance pts.";
         } catch (Exception $e) {
             $conn->rollback();
             $errors[] = "Redemption failed: " . $e->getMessage();
@@ -113,8 +122,8 @@ $stmt->bind_result($userPoints);
 $stmt->fetch();
 $stmt->close();
 
-// ✅ Fetch cart items with CartID
-$sql = "SELECT ci.CartID, ci.VoucherID, ci.Quantity, v.Title, v.VoucherPoints, v.Image, v.Description
+// Get cart items again
+$sql = "SELECT ci.CartID, ci.Quantity, v.Title, v.VoucherPoints, v.Image, v.Description
         FROM CART_ITEMS ci
         JOIN VOUCHER v ON ci.VoucherID = v.VoucherID
         WHERE ci.UserID = ?";
@@ -177,7 +186,6 @@ $netTotal = $totalPoints - $rebateTotal;
         </div>
     <?php else: ?>
         <div class="row">
-            <!-- Cart Items -->
             <div class="col-lg-8">
                 <div class="card shadow-sm">
                     <div class="card-body">
