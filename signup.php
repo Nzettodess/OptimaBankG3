@@ -43,6 +43,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (empty($errors)) {
         // Check duplicates
         $check = $conn->prepare("SELECT UserID FROM USERS WHERE Email=? OR Username=? OR PhoneNumber=?");
+        if (!$check) {
+            die("Check prepare failed: " . $conn->error);
+        }
         $check->bind_param("sss", $email, $username, $phone);
         $check->execute();
         $check->store_result();
@@ -51,16 +54,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $errors[] = "Email, Username, or Phone number already exists.";
         } else {
             $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+            $initialPoints = 50000; // 🎉 give 50k points
 
-            $stmt = $conn->prepare("INSERT INTO USERS (Email, Username, PhoneNumber, Password) VALUES (?, ?, ?, ?)");
-            $stmt->bind_param("ssss", $email, $username, $phone, $hashedPassword);
+            // Insert new user with UserPoints column
+            $stmt = $conn->prepare("INSERT INTO USERS (Email, Username, PhoneNumber, Password, UserPoints) VALUES (?, ?, ?, ?, ?)");
+        if (!$stmt) {
+            die("Prepare failed: " . $conn->error);
+            }
+
+            $stmt->bind_param("ssssi", $email, $username, $phone, $hashedPassword, $initialPoints);
 
             if ($stmt->execute()) {
-                // ✅ Redirect after success
-                header("Location: login.php?signup=success");
-                exit();
+                $success = "🎉 Account created successfully! You received <b>50,000 welcome points</b>. <a href='login.php'>Click here to login</a>";
             } else {
-                $errors[] = "Database error: " . $stmt->error;
+                $errors[] = "Insert failed: " . $stmt->error;
             }
             $stmt->close();
         }
@@ -87,7 +94,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             </div>
         <?php endif; ?>
 
+        <!-- Display success -->
+        <?php if (!empty($success)) : ?>
+            <div class="alert alert-success">
+                <?= $success ?>
+            </div>
+        <?php endif; ?>
+
         <!-- Signup Form -->
+        <?php if (empty($success)) : ?>
         <form method="POST" action="signup.php" novalidate>
             <div class="mb-3">
                 <label class="form-label">Email Address</label>
@@ -128,6 +143,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 Already have an account? <a href="login.php">Login here</a>
             </p>
         </form>
+        <?php endif; ?>
     </div>
 </div>
 </body>
