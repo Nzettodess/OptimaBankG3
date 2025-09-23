@@ -223,7 +223,7 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
         <a class="navbar-brand fw-bold" href="home.php">OptimaBank</a>
         <div class="d-flex align-items-center gap-3">
             <a href="cart.php">
-                <img src="trolley.png" alt="Cart" class="trolley-icon">
+                <img src="img/trolley.png" alt="Cart" class="trolley-icon">
             </a>
             <a href="edit_profile.php">
                 <img src="<?= htmlspecialchars($profileImg) ?>" alt="Profile" class="profile-img">
