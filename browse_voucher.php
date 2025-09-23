@@ -24,6 +24,91 @@ $stmt->close();
 // Handle search
 $search = isset($_GET['search']) ? trim($_GET['search']) : "";
 
+// Handle Add to Cart (AJAX)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
+    $voucherId = (int)$_POST['voucher_id'];
+    $quantity = max(1, (int)($_POST['quantity'] ?? 1));
+    // Check if already in cart
+    $check = $conn->prepare("SELECT CartID FROM CART_ITEMS WHERE UserID = ? AND VoucherID = ?");
+    $check->bind_param("ii", $userId, $voucherId);
+    $check->execute();
+    $check->store_result();
+    if ($check->num_rows > 0) {
+        // Already in cart, update quantity
+        $upd = $conn->prepare("UPDATE CART_ITEMS SET Quantity = Quantity + ? WHERE UserID = ? AND VoucherID = ?");
+        $upd->bind_param("iii", $quantity, $userId, $voucherId);
+        $upd->execute();
+        $upd->close();
+    } else {
+        // Insert new
+        $ins = $conn->prepare("INSERT INTO CART_ITEMS (VoucherID, UserID, Quantity) VALUES (?, ?, ?)");
+        $ins->bind_param("iii", $voucherId, $userId, $quantity);
+        $ins->execute();
+        $ins->close();
+    }
+    $check->close();
+    echo json_encode(["success" => true]);
+    exit();
+}
+
+// Handle Redeem Now (AJAX)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['redeem_now'])) {
+    $voucherId = (int)$_POST['voucher_id'];
+    // Default quantity = 1 for direct redeem
+    $quantity = 1;
+
+    // Get voucher points
+    $q = $conn->prepare("SELECT VoucherPoints FROM VOUCHER WHERE VoucherID = ?");
+    $q->bind_param("i", $voucherId);
+    $q->execute();
+    $q->bind_result($voucherPoints);
+    if (!$q->fetch()) {
+        echo json_encode(["success"=>false,"error"=>"Voucher not found."]);
+        exit();
+    }
+    $q->close();
+
+    // Get user's current points
+    $q = $conn->prepare("SELECT UserPoints FROM USERS WHERE UserID = ?");
+    $q->bind_param("i", $userId);
+    $q->execute();
+    $q->bind_result($userPoints);
+    if (!$q->fetch()) {
+        echo json_encode(["success"=>false,"error"=>"User not found."]);
+        exit();
+    }
+    $q->close();
+
+    if ($userPoints < $voucherPoints) {
+        echo json_encode(["success"=>false,"error"=>"Insufficient points."]);
+        exit();
+    }
+
+    $conn->begin_transaction();
+    try {
+        // Deduct points
+        $newBalance = $userPoints - $voucherPoints;
+        $upd = $conn->prepare("UPDATE USERS SET UserPoints = ? WHERE UserID = ?");
+        $upd->bind_param("ii", $newBalance, $userId);
+        $upd->execute();
+        $upd->close();
+
+        // Add to history
+        $ins = $conn->prepare("INSERT INTO CART_ITEMS_HISTORY (VoucherID, UserID, Quantity, CompletedDate) VALUES (?, ?, ?, NOW())");
+        $ins->bind_param("iii", $voucherId, $userId, $quantity);
+        $ins->execute();
+        $ins->close();
+
+        $conn->commit();
+        echo json_encode(["success"=>true,"message"=>"Redemption successful!"]);
+        exit();
+    } catch (Exception $e) {
+        $conn->rollback();
+        echo json_encode(["success"=>false,"error"=>"Redemption failed: ".$e->getMessage()]);
+        exit();
+    }
+}
+
 // Always get all categories
 $categories = [];
 $cat_sql = "SELECT CategoryID, Name FROM CATEGORY ORDER BY CreatedAt DESC";
@@ -84,135 +169,33 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
     <title>Browse Vouchers - OptimaBank</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .profile-img {
-            width: 40px; height: 40px; border-radius: 50%; object-fit: cover;
-        }
-        .trolley-icon {
-            width: 28px; height: 28px;
-        }
-        .voucher-row-wrapper {
-            position: relative;
-        }
-        .voucher-scroll-row {
-            overflow-x: auto;
-            padding-bottom: 8px;
-            display: flex;
-            flex-wrap: nowrap;
-            gap: 18px;
-            scroll-behavior: smooth;
-        }
-        .voucher-card {
-            flex: 0 0 320px;
-            max-width: 320px;
-            min-width: 280px;
-            margin-bottom: 8px;
-        }
-        .voucher-img {
-            width: 100%; height: 160px; object-fit: cover; border-radius: .5rem .5rem 0 0;
-            background: #f3f3f3;
-        }
-        .category-title-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .latest-badge {
-            background: #007bff;
-            color: #fff;
-            font-size: .9em;
-            border-radius: 5px;
-            padding: 2px 8px;
-        }
-        .voucher-scroll-row::-webkit-scrollbar {
-            display: none;
-        }
-        .voucher-scroll-row {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-        .voucher-row-fade {
-            position: absolute;
-            top: 0; right: 0; bottom: 0;
-            width: 80px;
-            pointer-events: none;
-            z-index: 2;
-            background: linear-gradient(to left, rgba(255,255,255,0.96) 60%, rgba(255,255,255,0));
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            transition: opacity 0.3s;
-        }
-        .voucher-row-fade .scroll-arrow {
-            font-size: 2.5rem;
-            color: #c0c0c0;
-            opacity: 0.7;
-            margin-right: 12px;
-            user-select: none;
-        }
-        .voucher-row-fade.hide {
-            opacity: 0;
-            pointer-events: none;
-        }
-        .search-bar-wrapper {
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        @media (max-width: 600px) {
-            .search-bar-wrapper {
-                justify-content: center;
-            }
-        }
-        .modal-voucher-img {
-            width: 100%;
-            height: 200px;
-            object-fit: cover;
-            border-radius: .5rem;
-            margin-bottom: 15px;
-        }
-        .terms-section {
-            background-color: #f8f9fa;
-            border-radius: 0.5rem;
-            padding: 15px;
-            margin-top: 15px;
-            max-height: 150px;
-            overflow-y: auto;
-        }
-        .terms-section h6 {
-            font-size: 0.9rem;
-            font-weight: bold;
-            margin-bottom: 8px;
-            color: #495057;
-        }
-        .terms-content {
-            font-size: 0.85rem;
-            color: #6c757d;
-            white-space: pre-line;
-        }
-        .terms-modal-section {
-            background-color: #f8f9fa;
-            border-radius: 0.5rem;
-            padding: 15px;
-            margin-top: 15px;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-        .terms-modal-section h6 {
-            font-size: 0.95rem;
-            font-weight: bold;
-            margin-bottom: 10px;
-            color: #495057;
-        }
-        .terms-modal-content {
-            font-size: 0.9rem;
-            color: #6c757d;
-            white-space: pre-line;
-        }
-        .btn-view-terms {
-            font-size: 0.85rem;
-            padding: 0.25rem 0.5rem;
-        }
+        .profile-img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+        .trolley-icon { width: 28px; height: 28px; }
+        .voucher-row-wrapper { position: relative; }
+        .voucher-scroll-row { overflow-x: auto; padding-bottom: 8px; display: flex; flex-wrap: nowrap; gap: 18px; scroll-behavior: smooth; }
+        .voucher-card { flex: 0 0 320px; max-width: 320px; min-width: 280px; margin-bottom: 8px; }
+        .voucher-img { width: 100%; height: 160px; object-fit: cover; border-radius: .5rem .5rem 0 0; background: #f3f3f3; }
+        .category-title-row { display: flex; align-items: center; gap: 8px; }
+        .latest-badge { background: #007bff; color: #fff; font-size: .9em; border-radius: 5px; padding: 2px 8px; }
+        .voucher-scroll-row::-webkit-scrollbar { display: none; }
+        .voucher-scroll-row { -ms-overflow-style: none; scrollbar-width: none; }
+        .voucher-row-fade { position: absolute; top: 0; right: 0; bottom: 0; width: 80px; pointer-events: none; z-index: 2;
+            background: linear-gradient(to left, rgba(255,255,255,0.96) 60%, rgba(255,255,255,0)); display: flex; align-items: center; justify-content: flex-end; transition: opacity 0.3s; }
+        .voucher-row-fade .scroll-arrow { font-size: 2.5rem; color: #c0c0c0; opacity: 0.7; margin-right: 12px; user-select: none; }
+        .voucher-row-fade.hide { opacity: 0; pointer-events: none; }
+        .search-bar-wrapper { display: flex; justify-content: flex-end; align-items: center; margin-bottom: 20px; }
+        @media (max-width: 600px) { .search-bar-wrapper { justify-content: center; } }
+        .modal-voucher-img { width: 100%; height: 200px; object-fit: cover; border-radius: .5rem; margin-bottom: 15px; }
+        .terms-section { background-color: #f8f9fa; border-radius: 0.5rem; padding: 15px; margin-top: 15px; max-height: 150px; overflow-y: auto; }
+        .terms-section h6 { font-size: 0.9rem; font-weight: bold; margin-bottom: 8px; color: #495057; }
+        .terms-content { font-size: 0.85rem; color: #6c757d; white-space: pre-line; }
+        .terms-modal-section { background-color: #f8f9fa; border-radius: 0.5rem; padding: 15px; margin-top: 15px; max-height: 200px; overflow-y: auto; }
+        .terms-modal-section h6 { font-size: 0.95rem; font-weight: bold; margin-bottom: 10px; color: #495057; }
+        .terms-modal-content { font-size: 0.9rem; color: #6c757d; white-space: pre-line; }
+        .btn-view-terms { font-size: 0.85rem; padding: 0.25rem 0.5rem; }
+        .btn-add-cart { font-size: 0.9rem; }
+        .btn-redeem-now { font-size: 0.9rem; }
+        #voucher-action-feedback { display: none; position: fixed; left: 50%; top: 20px; transform: translateX(-50%); z-index: 9999; min-width: 250px; }
     </style>
 </head>
 <body class="bg-light">
@@ -233,6 +216,7 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
 </nav>
 
 <div class="container py-4">
+    <div id="voucher-action-feedback" class="alert alert-success text-center"></div>
     <div class="search-bar-wrapper">
         <form class="d-flex" method="get" action="">
             <input class="form-control me-2" type="search" name="search" placeholder="Search category, title, points, desc, terms..." value="<?= htmlspecialchars($search) ?>" aria-label="Search">
@@ -273,7 +257,6 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
                             <div class="mb-2 text-muted" style="font-size:0.97em;">
                                 <?= nl2br(htmlspecialchars(mb_strimwidth($v['Description'], 0, 100, '...'))) ?>
                             </div>
-                            
                             <!-- Terms & Conditions Preview -->
                             <div class="terms-section">
                                 <h6>Terms & Conditions</h6>
@@ -288,16 +271,21 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
                                     View Full Terms
                                 </button>
                             </div>
-                            
-                            <button type="button" class="btn btn-outline-success w-100 mt-3 view-voucher-btn" 
+                            <div class="d-grid gap-2 mt-3">
+                                <button type="button" class="btn btn-success btn-redeem-now"
                                     data-voucher-id="<?= $v['VoucherID'] ?>"
                                     data-voucher-title="<?= htmlspecialchars($v['Title']) ?>"
                                     data-voucher-points="<?= htmlspecialchars($v['VoucherPoints']) ?>"
                                     data-voucher-description="<?= htmlspecialchars($v['Description']) ?>"
                                     data-voucher-terms="<?= htmlspecialchars($v['TaC']) ?>"
                                     data-voucher-image="<?= !empty($v['Image']) ? 'data:image/jpeg;base64,' . base64_encode($v['Image']) : '' ?>">
-                                Add to Redeem
-                            </button>
+                                    Redeem Now
+                                </button>
+                                <button type="button" class="btn btn-outline-success btn-add-cart"
+                                    data-voucher-id="<?= $v['VoucherID'] ?>">
+                                    Add to Cart
+                                </button>
+                            </div>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -336,35 +324,31 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
     </div>
 </div>
 
-<!-- Voucher Detail Modal -->
+<!-- Voucher Detail Modal (for Redeem Now) -->
 <div class="modal fade" id="voucherModal" tabindex="-1" aria-labelledby="voucherModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="voucherModalLabel">Voucher Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div id="modalVoucherImage">
-                    <!-- Image will be inserted by JavaScript -->
+            <form id="redeemForm" autocomplete="off">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="voucherModalLabel">Voucher Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <h4 id="modalVoucherTitle" class="mb-2"></h4>
-                <div class="text-success fw-semibold mb-3">Points: <span id="modalVoucherPoints"></span></div>
-                <p id="modalVoucherDescription" class="mb-4"></p>
-                
-                <!-- Terms & Conditions Section in Voucher Modal -->
-                <div class="terms-modal-section">
-                    <h6>Terms & Conditions</h6>
-                    <div id="modalVoucherTerms" class="terms-modal-content"></div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <form id="redeemForm" action="redeem_voucher.php" method="post">
+                <div class="modal-body">
+                    <div id="modalVoucherImage"></div>
+                    <h4 id="modalVoucherTitle" class="mb-2"></h4>
+                    <div class="text-success fw-semibold mb-3">Points: <span id="modalVoucherPoints"></span></div>
+                    <p id="modalVoucherDescription" class="mb-4"></p>
+                    <div class="terms-modal-section">
+                        <h6>Terms & Conditions</h6>
+                        <div id="modalVoucherTerms" class="terms-modal-content"></div>
+                    </div>
                     <input type="hidden" name="voucher_id" id="modalVoucherId">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-success">Confirm Redeem</button>
-                </form>
-            </div>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -387,27 +371,25 @@ document.addEventListener("DOMContentLoaded", function() {
         row.addEventListener('scroll', updateFade);
         window.addEventListener('resize', updateFade);
     });
-    
+
     // Terms Modal functionality
     const termsModal = new bootstrap.Modal(document.getElementById('termsModal'));
     const viewTermsButtons = document.querySelectorAll('.btn-view-terms');
-    
     viewTermsButtons.forEach(button => {
         button.addEventListener('click', function() {
             const termsTitle = this.getAttribute('data-terms-title');
             const termsContent = this.getAttribute('data-terms-content');
-            
             document.getElementById('termsModalLabel').textContent = 'Terms & Conditions - ' + termsTitle;
             document.getElementById('termsModalVoucherTitle').textContent = termsTitle;
             document.getElementById('termsModalContent').textContent = termsContent;
         });
     });
-    
-    // Voucher modal functionality
+
+    // Voucher modal functionality (for Redeem Now)
     const voucherModal = new bootstrap.Modal(document.getElementById('voucherModal'));
-    const viewVoucherButtons = document.querySelectorAll('.view-voucher-btn');
-    
-    viewVoucherButtons.forEach(button => {
+    let currentVoucherId = null;
+
+    document.querySelectorAll('.btn-redeem-now').forEach(button => {
         button.addEventListener('click', function() {
             const voucherId = this.getAttribute('data-voucher-id');
             const voucherTitle = this.getAttribute('data-voucher-title');
@@ -415,28 +397,77 @@ document.addEventListener("DOMContentLoaded", function() {
             const voucherDescription = this.getAttribute('data-voucher-description');
             const voucherTerms = this.getAttribute('data-voucher-terms');
             const voucherImage = this.getAttribute('data-voucher-image');
-            
-            // Set modal content
+
             document.getElementById('modalVoucherId').value = voucherId;
             document.getElementById('modalVoucherTitle').textContent = voucherTitle;
             document.getElementById('modalVoucherPoints').textContent = voucherPoints;
             document.getElementById('modalVoucherDescription').textContent = voucherDescription;
             document.getElementById('modalVoucherTerms').textContent = voucherTerms;
-            
-            // Set image or placeholder
+
             const imageContainer = document.getElementById('modalVoucherImage');
             if (voucherImage) {
                 imageContainer.innerHTML = `<img src="${voucherImage}" class="modal-voucher-img" alt="${voucherTitle}">`;
             } else {
                 imageContainer.innerHTML = '<div class="modal-voucher-img d-flex align-items-center justify-content-center bg-light text-muted">No Image Available</div>';
             }
-            
-            // Show modal
             voucherModal.show();
+        });
+    });
+
+    // Redeem Now action (AJAX)
+    document.getElementById('redeemForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const voucherId = document.getElementById('modalVoucherId').value;
+        fetch('browse_voucher.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'redeem_now=1&voucher_id=' + encodeURIComponent(voucherId)
+        })
+        .then(res => res.json())
+        .then(resp => {
+            voucherModal.hide();
+            let feedback = document.getElementById('voucher-action-feedback');
+            if (resp.success) {
+                feedback.className = "alert alert-success text-center";
+                feedback.textContent = resp.message || "Redeemed successfully!";
+                feedback.style.display = "block";
+                setTimeout(() => location.reload(), 1200);
+            } else {
+                feedback.className = "alert alert-danger text-center";
+                feedback.textContent = resp.error || "Failed to redeem.";
+                feedback.style.display = "block";
+                setTimeout(()=>{ feedback.style.display="none"; }, 3500);
+            }
+        });
+    });
+
+    // Add to cart action (AJAX)
+    document.querySelectorAll('.btn-add-cart').forEach(button => {
+        button.addEventListener('click', function() {
+            const voucherId = this.getAttribute('data-voucher-id');
+            fetch('browse_voucher.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'add_to_cart=1&voucher_id=' + encodeURIComponent(voucherId)
+            })
+            .then(res => res.json())
+            .then(resp => {
+                let feedback = document.getElementById('voucher-action-feedback');
+                if (resp.success) {
+                    feedback.className = "alert alert-success text-center";
+                    feedback.textContent = "Added to cart! View your cart for checkout.";
+                    feedback.style.display = "block";
+                    setTimeout(()=>{ feedback.style.display="none"; }, 3000);
+                } else {
+                    feedback.className = "alert alert-danger text-center";
+                    feedback.textContent = resp.error || "Failed to add to cart.";
+                    feedback.style.display = "block";
+                    setTimeout(()=>{ feedback.style.display="none"; }, 3500);
+                }
+            });
         });
     });
 });
 </script>
-
 </body>
 </html>
