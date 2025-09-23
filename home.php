@@ -190,9 +190,12 @@ while ($cat = $catResult->fetch_assoc()) {
             <a href="edit_profile.php">
                 <img src="<?= htmlspecialchars($profileImg) ?>" alt="Profile" class="profile-img">
             </a>
+            <!-- ✅ Added Logout Button -->
+            <a href="logout.php" class="btn btn-outline-light btn-sm">Logout</a>
         </div>
     </div>
 </nav>
+
 
 <div class="container py-4">
     <!-- Welcome and Points Row -->
