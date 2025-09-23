@@ -195,7 +195,7 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
         .btn-view-terms { font-size: 0.85rem; padding: 0.25rem 0.5rem; }
         .btn-add-cart { font-size: 0.9rem; }
         .btn-redeem-now { font-size: 0.9rem; }
-        #voucher-action-feedback { display: none; }
+        #voucher-action-feedback { display: none; position: fixed; left: 50%; top: 20px; transform: translateX(-50%); z-index: 9999; min-width: 250px; }
     </style>
 </head>
 <body class="bg-light">
@@ -457,7 +457,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     feedback.className = "alert alert-success text-center";
                     feedback.textContent = "Added to cart! View your cart for checkout.";
                     feedback.style.display = "block";
-                    setTimeout(()=>{ feedback.style.display="none"; }, 1800);
+                    setTimeout(()=>{ feedback.style.display="none"; }, 3000);
                 } else {
                     feedback.className = "alert alert-danger text-center";
                     feedback.textContent = resp.error || "Failed to add to cart.";
