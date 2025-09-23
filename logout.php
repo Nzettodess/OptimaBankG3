@@ -9,5 +9,5 @@ session_destroy();
 
 // ✅ Redirect safely back to login page
 // Adjust folder name if your project folder is different
-header("Location: /OptimaBankG3-PHP/login.php");
+header("Location: /OptimaBankG3-PHP-clean-main/login.php");
 exit();
