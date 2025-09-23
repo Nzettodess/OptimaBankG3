@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Sep 18, 2025 at 01:12 PM
+-- Generation Time: Sep 23, 2025 at 10:08 AM
 -- Server version: 10.6.15-MariaDB
 -- PHP Version: 8.2.4
 
@@ -187,6 +187,12 @@ INSERT INTO `voucher` (`VoucherID`, `CategoryID`, `VoucherPoints`, `Title`, `Ima
 --
 
 --
+-- Indexes for table `cart_items`
+--
+ALTER TABLE `cart_items`
+  ADD PRIMARY KEY (`CartID`);
+
+--
 -- Indexes for table `users`
 --
 ALTER TABLE `users`
@@ -196,6 +202,12 @@ ALTER TABLE `users`
 --
 -- AUTO_INCREMENT for dumped tables
 --
+
+--
+-- AUTO_INCREMENT for table `cart_items`
+--
+ALTER TABLE `cart_items`
+  MODIFY `CartID` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `users`
