@@ -163,7 +163,7 @@ $netTotal = $totalPoints - $rebateTotal;
     <div class="container-fluid px-4">
         <a class="navbar-brand fw-bold" href="home.php">OptimaBank</a>
         <div class="d-flex align-items-center gap-3">
-            <a href="cart.php"><img src="trolley.png" class="trolley-icon"></a>
+            <a href="cart.php"><img src="img/trolley.png" class="trolley-icon"></a>
             <a href="edit_profile.php"><img src="<?= htmlspecialchars($profileImg) ?>" class="profile-img"></a>
         </div>
     </div>
