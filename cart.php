@@ -11,7 +11,7 @@ $userId = (int) $_SESSION['user_id'];
 $username = $_SESSION['username'] ?? "";
 
 // Get profile image
-$profileImg = "blank_profile.png";
+$profileImg = "img/blank_profile.png";
 $stmt = $conn->prepare("SELECT ProfileImage FROM USERS WHERE UserID = ?");
 $stmt->bind_param("i", $userId);
 $stmt->execute();
