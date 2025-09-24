@@ -33,10 +33,10 @@ $stmt->bind_result($totalRedemptions, $totalVouchers);
 $stmt->fetch();
 $stmt->close();
 
-// Get recent redemption history (last 5)
+// Get recent redemption history (last 5) with expiration dates
 $recentHistory = [];
 $stmt = $conn->prepare("
-    SELECT h.Quantity, h.CompletedDate, v.Title, v.VoucherPoints, v.Image, c.Name as CategoryName
+    SELECT h.Quantity, h.CompletedDate, v.Title, v.VoucherPoints, v.Image, v.ExpirationDate, c.Name as CategoryName
     FROM CART_ITEMS_HISTORY h
     JOIN VOUCHER v ON h.VoucherID = v.VoucherID
     JOIN CATEGORY c ON v.CategoryID = c.CategoryID
@@ -250,23 +250,18 @@ $memberSince = date('F Y', strtotime($createdAt));
             gap: 1rem;
             margin-top: 2rem;
         }
-        .view-history-btn {
-            background: linear-gradient(45deg, #198754, #20c997);
-            border: none;
-            color: white;
-            padding: 0.5rem 1.5rem;
-            border-radius: 25px;
-            font-weight: 600;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        .voucher-expiry {
+            font-size: 0.8rem;
+            color: #6c757d;
+            margin-top: 4px;
         }
-        .view-history-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(25, 135, 84, 0.3);
-            color: white;
+        .voucher-expiry.expired {
+            color: #dc3545;
+            font-weight: 600;
+        }
+        .voucher-expiry.expiring-soon {
+            color: #fd7e14;
+            font-weight: 600;
         }
         @media (max-width: 768px) {
             .profile-hero {
@@ -398,12 +393,11 @@ $memberSince = date('F Y', strtotime($createdAt));
                     <a href="browse_voucher.php" class="btn btn-outline-success">
                         <i class="fas fa-gift me-2"></i>Browse Vouchers
                     </a>
-
                 </div>
             </div>
         </div>
 
-        <!-- Recent Activity -->
+        <!-- Voucher History -->
         <div class="col-lg-8">
             <div class="activity-card">
                 <div class="activity-header">
@@ -415,8 +409,8 @@ $memberSince = date('F Y', strtotime($createdAt));
                 <?php if (empty($recentHistory)): ?>
                     <div class="text-center py-5">
                         <i class="fas fa-shopping-cart fa-3x text-muted mb-3"></i>
-                        <h5 class="text-muted">No Recent Activity</h5>
-                        <p class="text-muted">Start redeeming vouchers to see your activity here!</p>
+                        <h5 class="text-muted">No Voucher History</h5>
+                        <p class="text-muted">Start redeeming vouchers to see your history here!</p>
                         <a href="browse_voucher.php" class="btn btn-success">Browse Vouchers</a>
                     </div>
                 <?php else: ?>
@@ -436,8 +430,25 @@ $memberSince = date('F Y', strtotime($createdAt));
                                 <div class="activity-meta">
                                     <span class="badge bg-light text-dark me-2"><?= htmlspecialchars($item['CategoryName']) ?></span>
                                     Quantity: <?= $item['Quantity'] ?> • 
-                                    <?= date('M j, Y g:i A', strtotime($item['CompletedDate'])) ?>
+                                    Redeemed: <?= date('M j, Y g:i A', strtotime($item['CompletedDate'])) ?>
                                 </div>
+                                <?php if (!empty($item['ExpirationDate'])): 
+                                    $expiryDate = new DateTime($item['ExpirationDate']);
+                                    $today = new DateTime();
+                                    $isExpired = $expiryDate < $today;
+                                    $diffDays = $today->diff($expiryDate)->days;
+                                    $expiryClass = '';
+                                    if ($isExpired) {
+                                        $expiryClass = 'expired';
+                                    } elseif ($diffDays <= 7) {
+                                        $expiryClass = 'expiring-soon';
+                                    }
+                                ?>
+                                    <div class="voucher-expiry <?= $expiryClass ?>">
+                                        <i class="fas fa-calendar-times me-1"></i>
+                                        <?= $isExpired ? 'Expired: ' : 'Expires: ' ?><?= date('M j, Y', strtotime($item['ExpirationDate'])) ?>
+                                    </div>
+                                <?php endif; ?>
                             </div>
                             
                             <div class="text-end">
