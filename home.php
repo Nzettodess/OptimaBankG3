@@ -187,7 +187,7 @@ while ($cat = $catResult->fetch_assoc()) {
             <a href="cart.php">
                 <img src="IMG/trolley.png" alt="Cart" class="trolley-icon">
             </a>
-            <a href="edit_profile.php">
+            <a href="profile.php">
                 <img src="<?= htmlspecialchars($profileImg) ?>" alt="Profile" class="profile-img">
             </a>
             <!-- ✅ Added Logout Button -->
