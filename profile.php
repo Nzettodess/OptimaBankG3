@@ -250,6 +250,24 @@ $memberSince = date('F Y', strtotime($createdAt));
             gap: 1rem;
             margin-top: 2rem;
         }
+        .view-history-btn {
+            background: linear-gradient(45deg, #198754, #20c997);
+            border: none;
+            color: white;
+            padding: 0.5rem 1.5rem;
+            border-radius: 25px;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .view-history-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(25, 135, 84, 0.3);
+            color: white;
+        }
         @media (max-width: 768px) {
             .profile-hero {
                 padding: 2rem 0;
@@ -380,9 +398,7 @@ $memberSince = date('F Y', strtotime($createdAt));
                     <a href="browse_voucher.php" class="btn btn-outline-success">
                         <i class="fas fa-gift me-2"></i>Browse Vouchers
                     </a>
-                    <a href="voucher_history.php" class="btn btn-outline-secondary">
-                        <i class="fas fa-history me-2"></i>Full History
-                    </a>
+
                 </div>
             </div>
         </div>
@@ -392,7 +408,7 @@ $memberSince = date('F Y', strtotime($createdAt));
             <div class="activity-card">
                 <div class="activity-header">
                     <h4 class="mb-0">
-                        <i class="fas fa-clock me-2 text-success"></i>Recent Activity
+                        <i class="fas fa-history me-2 text-success"></i>Voucher History
                     </h4>
                 </div>
                 
@@ -433,9 +449,6 @@ $memberSince = date('F Y', strtotime($createdAt));
                     <?php endforeach; ?>
                     
                     <div class="text-center p-3 bg-light">
-                        <a href="voucher_history.php" class="btn btn-outline-success btn-sm">
-                            View Full History <i class="fas fa-arrow-right ms-1"></i>
-                        </a>
                     </div>
                 <?php endif; ?>
             </div>
@@ -445,5 +458,4 @@ $memberSince = date('F Y', strtotime($createdAt));
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
-</html>
 </html>
