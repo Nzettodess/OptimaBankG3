@@ -208,7 +208,7 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
             <a href="cart.php">
                 <img src="img/trolley.png" alt="Cart" class="trolley-icon">
             </a>
-            <a href="edit_profile.php">
+            <a href="profile.php">
                 <img src="<?= htmlspecialchars($profileImg) ?>" alt="Profile" class="profile-img">
             </a>
         </div>
