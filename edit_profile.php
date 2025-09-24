@@ -16,13 +16,31 @@ function getUserData($conn, $userId) {
     $stmt->bind_param("i", $userId);
     $stmt->execute();
     $stmt->bind_result($dbUsername, $email, $imgData, $points);
-    $stmt->fetch();
-    $stmt->close();
-    return [$dbUsername, $email, $imgData, $points];
+    
+    // Initialize default values
+    $dbUsername = $email = $imgData = $points = null;
+    
+    if ($stmt->fetch()) {
+        // Data found and fetched successfully
+        $stmt->close();
+        return [$dbUsername, $email, $imgData, $points];
+    } else {
+        // No data found, return defaults
+        $stmt->close();
+        return [null, null, null, 0];
+    }
 }
 
 // Initial fetch
 list($dbUsername, $email, $imgData, $points) = getUserData($conn, $userId);
+
+// Handle case where user data might not exist
+if ($dbUsername === null) {
+    // Redirect to login if user not found
+    session_destroy();
+    header("Location: login.php");
+    exit();
+}
 
 // Profile image handling
 $profileImg = "IMG/blank_profile.png";
@@ -163,11 +181,6 @@ if (isset($_POST['update_profile'])) {
                                 <img src="<?= htmlspecialchars($profileImg) ?>" alt="Profile" class="profile-img mb-3" onclick="document.getElementById('profileInput').click();">
                                 <input type="hidden" name="upload_image" value="1">
                             </form>
-
-                            <!-- Voucher History -->
-                            <div class="d-grid gap-2">
-                                <a href="voucher_history.php" class="btn btn-outline-primary">Voucher History</a>
-                            </div>
                         </div>
 
                         <!-- Right Side (Profile Update) -->
