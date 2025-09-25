@@ -20,7 +20,7 @@ $client->setRedirectUri($_ENV['GOOGLE_REDIRECT_URI']);
 
 if (isset($_GET['code'])) {
     $token = $client->fetchAccessTokenWithAuthCode($_GET['code']);
-    
+
     if (isset($token['error'])) {
         die("Google OAuth error: " . htmlspecialchars($token['error_description']));
     }
@@ -31,7 +31,7 @@ if (isset($_GET['code'])) {
     $google_account_info = $oauth->userinfo->get();
 
     $email = $google_account_info->email;
-    $name = $google_account_info->name;
+    $name  = $google_account_info->name;
 
     // --- sanitize username ---
     $username = preg_replace('/[^A-Za-z0-9._]/', '', $name); // only letters, numbers, dot, underscore
@@ -49,24 +49,29 @@ if (isset($_GET['code'])) {
     $stmt->store_result();
 
     if ($stmt->num_rows == 0) {
-        // Insert new user
-        $stmtInsert = $conn->prepare("INSERT INTO USERS (Email, Username, PhoneNumber, Password) VALUES (?, ?, ?, ?)");
+        // New user → Insert with 50,000 welcome points
+        $stmtInsert = $conn->prepare(
+            "INSERT INTO USERS (Email, Username, PhoneNumber, Password, UserPoints) VALUES (?, ?, ?, ?, ?)"
+        );
         $emptyPassword = password_hash(bin2hex(random_bytes(8)), PASSWORD_DEFAULT); // random password
         $nullPhone = "";
-        $stmtInsert->bind_param("ssss", $email, $username, $nullPhone, $emptyPassword);
+        $welcomePoints = 50000; // 🎉 bonus points
+        $stmtInsert->bind_param("ssssi", $email, $username, $nullPhone, $emptyPassword, $welcomePoints);
         $stmtInsert->execute();
+        $stmtInsert->close();
     }
 
     // Retrieve user ID
-    $stmt = $conn->prepare("SELECT UserID FROM USERS WHERE Email=?");
+    $stmt = $conn->prepare("SELECT UserID, Username FROM USERS WHERE Email=?");
     $stmt->bind_param("s", $email);
     $stmt->execute();
-    $stmt->bind_result($userId);
+    $stmt->bind_result($userId, $fetchedUsername);
     $stmt->fetch();
+    $stmt->close();
 
     // Set session
     $_SESSION['user_id'] = $userId;
-    $_SESSION['username'] = $username;
+    $_SESSION['username'] = $fetchedUsername;
 
     header("Location: home.php");
     exit;
