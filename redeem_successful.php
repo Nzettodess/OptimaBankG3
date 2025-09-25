@@ -17,8 +17,25 @@ $stmt->execute();
 $stmt->bind_result($userPoints);
 $stmt->fetch();
 $stmt->close();
-?>
 
+// Fetch last redeemed voucher info from session (flash)
+$lastVoucherId = $_SESSION['last_redeemed_voucher'] ?? null;
+$redeemMessage = $_SESSION['redeem_message'] ?? null;
+$voucherTitle = "";
+$voucherPoints = null;
+
+if ($lastVoucherId) {
+    $s = $conn->prepare("SELECT Title, VoucherPoints FROM VOUCHER WHERE VoucherID = ?");
+    $s->bind_param("i", $lastVoucherId);
+    $s->execute();
+    $s->bind_result($voucherTitle, $voucherPoints);
+    $s->fetch();
+    $s->close();
+}
+
+// Clear flash/session items so refresh won't show them again
+unset($_SESSION['last_redeemed_voucher'], $_SESSION['redeem_message']);
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -36,28 +53,35 @@ $stmt->close();
             border-radius: 8px;
             padding: 40px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            max-width: 500px;
-            margin: 100px auto;
+            max-width: 520px;
+            margin: 80px auto;
         }
 
         .header-text {
-            font-size: 32px;
+            font-size: 28px;
             font-weight: bold;
             color: #28a745;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
         }
 
         .message-text {
-            font-size: 16px;
+            font-size: 15px;
             color: #6c757d;
-            margin-bottom: 30px;
+            margin-bottom: 18px;
         }
 
         .remaining-points {
             font-size: 18px;
             font-weight: bold;
             color: #28a745;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
+        }
+
+        .voucher-info {
+            background: #f1f8f3;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 18px;
         }
 
         .btn-custom {
@@ -94,12 +118,26 @@ $stmt->close();
 <body>
     <div class="container text-center">
         <div class="header-text">Congratulations!</div>
-        <div class="message-text">Your voucher has been successfully redeemed.</div>
+        <?php if ($redeemMessage): ?>
+            <div class="message-text"><?= htmlspecialchars($redeemMessage) ?></div>
+        <?php else: ?>
+            <div class="message-text">Your voucher has been successfully redeemed.</div>
+        <?php endif; ?>
+
+        <?php if ($lastVoucherId && $voucherTitle): ?>
+            <div class="voucher-info text-start">
+                <strong>Voucher:</strong> <?= htmlspecialchars($voucherTitle) ?><br>
+                <?php if ($voucherPoints !== null): ?>
+                    <strong>Points used:</strong> <?= htmlspecialchars($voucherPoints) ?> pts
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+
         <div class="remaining-points">Your remaining points: <strong><?= htmlspecialchars($userPoints) ?> pts</strong></div>
 
-        <!-- Button to Download Voucher -->
-        <a href="download_voucher.php" class="btn-custom">Download Voucher</a>
-        
+        <!-- Button to Download Voucher - create download_voucher.php to serve actual voucher -->
+        <a href="download_voucher.php" class="btn-custom mb-2">Download Voucher</a>
+
         <!-- Button to go to Home -->
         <a href="home.php" class="btn-outline-secondary">Back to Home</a>
     </div>
