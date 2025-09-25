@@ -7,8 +7,8 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-$userId = $_SESSION['user_id'];
-$username = $_SESSION['username'];
+$userId = (int)$_SESSION['user_id'];
+$username = $_SESSION['username'] ?? "";
 
 // Get profile image if exists
 $profileImg = "img/blank_profile.png";
@@ -26,35 +26,39 @@ $search = isset($_GET['search']) ? trim($_GET['search']) : "";
 
 // Handle Add to Cart (AJAX)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
+    header('Content-Type: application/json; charset=utf-8');
     $voucherId = (int)$_POST['voucher_id'];
     $quantity = max(1, (int)($_POST['quantity'] ?? 1));
-    // Check if already in cart
+
     $check = $conn->prepare("SELECT CartID FROM CART_ITEMS WHERE UserID = ? AND VoucherID = ?");
     $check->bind_param("ii", $userId, $voucherId);
     $check->execute();
     $check->store_result();
     if ($check->num_rows > 0) {
-        // Already in cart, update quantity
         $upd = $conn->prepare("UPDATE CART_ITEMS SET Quantity = Quantity + ? WHERE UserID = ? AND VoucherID = ?");
         $upd->bind_param("iii", $quantity, $userId, $voucherId);
-        $upd->execute();
+        $ok = $upd->execute();
         $upd->close();
     } else {
-        // Insert new
         $ins = $conn->prepare("INSERT INTO CART_ITEMS (VoucherID, UserID, Quantity) VALUES (?, ?, ?)");
         $ins->bind_param("iii", $voucherId, $userId, $quantity);
-        $ins->execute();
+        $ok = $ins->execute();
         $ins->close();
     }
     $check->close();
-    echo json_encode(["success" => true]);
+
+    if ($ok) {
+        echo json_encode(["success" => true]);
+    } else {
+        echo json_encode(["success" => false, "error" => "Failed to add to cart."]);
+    }
     exit();
 }
 
 // Handle Redeem Now (AJAX)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['redeem_now'])) {
+    header('Content-Type: application/json; charset=utf-8');
     $voucherId = (int)$_POST['voucher_id'];
-    // Default quantity = 1 for direct redeem
     $quantity = 1;
 
     // Get voucher points
@@ -63,7 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['redeem_now'])) {
     $q->execute();
     $q->bind_result($voucherPoints);
     if (!$q->fetch()) {
-        echo json_encode(["success"=>false,"error"=>"Voucher not found."]);
+        $q->close();
+        echo json_encode(["success" => false, "error" => "Voucher not found."]);
         exit();
     }
     $q->close();
@@ -74,13 +79,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['redeem_now'])) {
     $q->execute();
     $q->bind_result($userPoints);
     if (!$q->fetch()) {
-        echo json_encode(["success"=>false,"error"=>"User not found."]);
+        $q->close();
+        echo json_encode(["success" => false, "error" => "User not found."]);
         exit();
     }
     $q->close();
 
     if ($userPoints < $voucherPoints) {
-        echo json_encode(["success"=>false,"error"=>"Insufficient points."]);
+        echo json_encode(["success" => false, "error" => "Insufficient points."]);
         exit();
     }
 
@@ -100,11 +106,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['redeem_now'])) {
         $ins->close();
 
         $conn->commit();
-        echo json_encode(["success"=>true,"message"=>"Redemption successful!"]);
+
+        // Save last redeemed voucher in session for redeem_successful.php
+        $_SESSION['last_redeemed_voucher'] = $voucherId;
+        $_SESSION['redeem_message'] = "Redemption successful!";
+
+        echo json_encode(["success" => true, "message" => "Redemption successful!"]);
         exit();
     } catch (Exception $e) {
         $conn->rollback();
-        echo json_encode(["success"=>false,"error"=>"Redemption failed: ".$e->getMessage()]);
+        echo json_encode(["success" => false, "error" => "Redemption failed: " . $e->getMessage()]);
         exit();
     }
 }
@@ -119,7 +130,6 @@ while ($row = $cat_res->fetch_assoc()) {
 
 function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "") {
     if ($search !== "") {
-        // If category name matches, show all its vouchers
         if (stripos($categoryName, $search) !== false) {
             $stmt = $conn->prepare(
                 "SELECT VoucherID, Title, VoucherPoints, Image, Description, TaC, IsLatest 
@@ -257,7 +267,6 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
                             <div class="mb-2 text-muted" style="font-size:0.97em;">
                                 <?= nl2br(htmlspecialchars(mb_strimwidth($v['Description'], 0, 100, '...'))) ?>
                             </div>
-                            <!-- Terms & Conditions Preview -->
                             <div class="terms-section">
                                 <h6>Terms & Conditions</h6>
                                 <div class="terms-content">
@@ -387,8 +396,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // Voucher modal functionality (for Redeem Now)
     const voucherModal = new bootstrap.Modal(document.getElementById('voucherModal'));
-    let currentVoucherId = null;
-
     document.querySelectorAll('.btn-redeem-now').forEach(button => {
         button.addEventListener('click', function() {
             const voucherId = this.getAttribute('data-voucher-id');
@@ -414,7 +421,7 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     });
 
-    // Redeem Now action (AJAX)
+    // Redeem Now action (AJAX) -> redirect on success
     document.getElementById('redeemForm').addEventListener('submit', function(e) {
         e.preventDefault();
         const voucherId = document.getElementById('modalVoucherId').value;
@@ -428,16 +435,22 @@ document.addEventListener("DOMContentLoaded", function() {
             voucherModal.hide();
             let feedback = document.getElementById('voucher-action-feedback');
             if (resp.success) {
-                feedback.className = "alert alert-success text-center";
-                feedback.textContent = resp.message || "Redeemed successfully!";
-                feedback.style.display = "block";
-                setTimeout(() => location.reload(), 1200);
+                // Redirect to success page which reads session flash
+                window.location.href = 'redeem_successful.php';
             } else {
                 feedback.className = "alert alert-danger text-center";
                 feedback.textContent = resp.error || "Failed to redeem.";
                 feedback.style.display = "block";
                 setTimeout(()=>{ feedback.style.display="none"; }, 3500);
             }
+        })
+        .catch(err => {
+            voucherModal.hide();
+            let feedback = document.getElementById('voucher-action-feedback');
+            feedback.className = "alert alert-danger text-center";
+            feedback.textContent = "An error occurred. Please try again.";
+            feedback.style.display = "block";
+            setTimeout(()=>{ feedback.style.display="none"; }, 3500);
         });
     });
 
@@ -464,6 +477,13 @@ document.addEventListener("DOMContentLoaded", function() {
                     feedback.style.display = "block";
                     setTimeout(()=>{ feedback.style.display="none"; }, 3500);
                 }
+            })
+            .catch(err => {
+                let feedback = document.getElementById('voucher-action-feedback');
+                feedback.className = "alert alert-danger text-center";
+                feedback.textContent = "An error occurred. Please try again.";
+                feedback.style.display = "block";
+                setTimeout(()=>{ feedback.style.display="none"; }, 3500);
             });
         });
     });
