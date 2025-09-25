@@ -211,19 +211,23 @@ function getVouchersForCategory($conn, $categoryId, $categoryName, $search = "")
 <body class="bg-light">
 
 <!-- Header (same as home.php) -->
+
 <nav class="navbar navbar-expand-lg navbar-dark bg-success shadow-sm">
     <div class="container-fluid px-4">
         <a class="navbar-brand fw-bold" href="home.php">OptimaBank</a>
         <div class="d-flex align-items-center gap-3">
             <a href="cart.php">
-                <img src="img/trolley.png" alt="Cart" class="trolley-icon">
+                <img src="IMG/trolley.png" alt="Cart" class="trolley-icon">
             </a>
-            <a href="profile.php">
+            <a href="edit_profile.php">
                 <img src="<?= htmlspecialchars($profileImg) ?>" alt="Profile" class="profile-img">
             </a>
+            <!-- ✅ Add Logout button -->
+            <a href="logout.php" class="btn btn-outline-light btn-sm">Logout</a>
         </div>
     </div>
 </nav>
+
 
 <div class="container py-4">
     <div id="voucher-action-feedback" class="alert alert-success text-center"></div>
